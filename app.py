@@ -73,12 +73,19 @@ def to_excel(df):
 
 def init_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--headless=new") # Required for Cloud
-    chrome_options.add_argument("--no-sandbox")   # Required for Linux
-    chrome_options.add_argument("--disable-dev-shm-usage") # Prevents memory crashes
+    chrome_options.add_argument("--headless=new")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
     
-    # This automatically finds the installed Chromium on the server
+    # Path for Streamlit Cloud
+    if os.path.exists("/usr/bin/chromedriver"):
+        return webdriver.Chrome(
+            service=Service("/usr/bin/chromedriver"), 
+            options=chrome_options
+        )
+    
+    # Path for your local computer (Automatic fallback)
     return webdriver.Chrome(
         service=Service(ChromeDriverManager().install()), 
         options=chrome_options
@@ -251,5 +258,6 @@ with tab3:
                         c2.download_button("📊 Excel", to_excel(df_seo), "seo_audit.xlsx")
                     else: st.write(res)
                 finally: driver.quit()
+
 
 
