@@ -53,6 +53,25 @@ st.markdown("""
         color: white;
         border: none;
     }
+
+    /* THE SIMPLE PASTE & ATTACHMENT BOX */
+    [data-testid="stFileUploader"] {
+        min-height: 300px;
+    }
+    [data-testid="stFileUploaderDropzone"] {
+        padding: 80px 10px;
+        border: 3px dashed #FF416C !important;
+        background-color: #fcfcfc;
+        border-radius: 15px;
+    }
+    .preview-card {
+        border: 2px solid #EEE;
+        border-radius: 15px;
+        padding: 10px;
+        background: white;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -62,8 +81,7 @@ def is_valid_url(url):
     try:
         result = urlparse(url)
         return all([result.scheme, result.netloc])
-    except:
-        return False
+    except: return False
 
 def to_excel(df):
     output = io.BytesIO()
@@ -77,19 +95,9 @@ def init_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    
-    # Path for Streamlit Cloud
     if os.path.exists("/usr/bin/chromedriver"):
-        return webdriver.Chrome(
-            service=Service("/usr/bin/chromedriver"), 
-            options=chrome_options
-        )
-    
-    # Path for your local computer (Automatic fallback)
-    return webdriver.Chrome(
-        service=Service(ChromeDriverManager().install()), 
-        options=chrome_options
-    )
+        return webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=chrome_options)
+    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
 
 def capture_screenshot(url):
     driver = None
@@ -100,8 +108,7 @@ def capture_screenshot(url):
         filename = "temp_screenshot.png"
         driver.save_screenshot(filename)
         return filename
-    except:
-        return None
+    except: return None
     finally:
         if driver: driver.quit()
 
@@ -126,12 +133,15 @@ def call_llm(prompt, image_path=None):
     client = Groq(api_key=current_key)
     messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
     if image_path:
-        with open(image_path, "rb") as f:
-            b64_img = base64.b64encode(f.read()).decode('utf-8')
+        if isinstance(image_path, str):
+            with open(image_path, "rb") as f:
+                b64_img = base64.b64encode(f.read()).decode('utf-8')
+        else:
+            b64_img = base64.b64encode(image_path).decode('utf-8')
         messages[0]["content"].append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64_img}"}})
     
     completion = client.chat.completions.create(
-        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        model="meta-llama/llama-4-scout-17b-16e-instruct", 
         messages=messages,
         temperature=0.1
     )
@@ -148,7 +158,6 @@ def parse_markdown_table(text):
 
 # --- SIDEBAR ---
 with st.sidebar:
-    # RE-ADD LOGO
     try:
         st.image("Akhil.png", use_container_width=True)
     except:
@@ -156,24 +165,31 @@ with st.sidebar:
     
     st.title("Settings")
     env_key = os.getenv("GROQ_API_KEY", "")
-    user_key = st.text_input("Groq API Key", value="", type="password", placeholder="Using .env key..." if env_key else "Enter key...")
+    user_key = st.text_input("Groq API Key", value="", type="password")
     active_api_key = user_key if user_key else env_key
     if active_api_key:
         os.environ["GROQ_API_KEY"] = active_api_key
         st.success("🔒 API Key Active")
     
     st.markdown("---")
-    categories = st.multiselect("Focus Areas:", ["UI/UX", "Functionality", "Security", "SEO", "Performance", "Positive Testing", "Negative Testing"], default=["UI/UX", "Functionality"])
-    num_cases = st.slider("Test Case Count", 5,75,20)
+    st.subheader("📸 Image Input")
+    st.write("Click box for uploading image.")
     
-    # RE-ADD CUSTOM PROMPT OPTION
+    uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg"], key="main_input_box")
+    
+    if uploaded_file:
+        st.markdown('<div class="preview-card">', unsafe_allow_html=True)
+        st.image(uploaded_file, caption="Input Preview", use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
     st.markdown("---")
-    st.subheader("🤖 AI Tuning")
-    custom_instructions = st.text_area("Custom Prompt Instructions", placeholder="e.g. Focus on financial compliance or mobile responsiveness...")
+    categories = st.multiselect("Focus Areas:", ["UI/UX", "Functionality", "Security", "SEO", "Positive Test Cases", "Negative Test Cases","Accessibility"], default=["UI/UX", "Functionality"])
+    num_cases = st.slider("Test Case Count", 5, 75, 20)
+    custom_instructions = st.text_area("Custom Prompt Instructions")
 
 # --- MAIN UI ---
 st.markdown('<span class="akhil-highlight">Akhil</span> QA Tool', unsafe_allow_html=True)
-url_input = st.text_input("Enter Website URL", placeholder="https://example.com")
+url_input = st.text_input("Enter Website URL (Optional if image provided)", placeholder="https://example.com")
 
 if not active_api_key: st.stop()
 
@@ -185,84 +201,72 @@ def get_processed_url():
     if not url.startswith("http"): url = "https://" + url
     return url if is_valid_url(url) else None
 
+def get_image_source(target_url):
+    if uploaded_file is not None:
+        return uploaded_file.getvalue(), False 
+    elif target_url:
+        path = capture_screenshot(target_url)
+        return path, True 
+    return None, False
+
 # --- TAB 1: TEST CASES ---
 with tab1:
     if st.button("🚀 Generate Test Cases", type="primary"):
         target = get_processed_url()
-        if target:
-            img = capture_screenshot(target)
-            if img:
-                with st.spinner("Generating Tests..."):
-                    prompt = f"Generate {num_cases} test cases for {target}. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: Test Case ID, Category, Scenario, Pre-Condition, Expected Result, Screen, Status, Priority, Severity, Created By."
-                    res = call_llm(prompt, img)
-                    df = parse_markdown_table(res)
-                    if df is not None:
-                        st.dataframe(df, use_container_width=True)
-                        c1, c2 = st.columns(2)
-                        c1.download_button("📥 CSV", df.to_csv(index=False), "tests.csv")
-                        c2.download_button("📊 Excel", to_excel(df), "tests.xlsx")
-                    else: st.write(res)
-                if os.path.exists(img): os.remove(img)
+        img_data, is_path = get_image_source(target)
+        if img_data:
+            with st.spinner("Analyzing UI..."):
+                prompt = f"Generate {num_cases} test cases. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: Test Case ID, Category, Scenario, Pre-Condition, Expected Result, Screen, Status, Priority, Severity, Created By."
+                res = call_llm(prompt, img_data)
+                df = parse_markdown_table(res)
+                if df is not None:
+                    st.dataframe(df, use_container_width=True)
+                    st.download_button("📥 Export Excel", to_excel(df), "QA_Tests.xlsx")
+                else: st.write(res)
+            if is_path and os.path.exists(img_data): os.remove(img_data)
+        else: st.error("Please provide an image or URL.")
 
 # --- TAB 2: BUG PREDICTOR ---
 with tab2:
     if st.button("🕵️‍♂️ Predict Risks", type="primary"):
         target = get_processed_url()
-        if target:
-            img = capture_screenshot(target)
-            if img:
-                with st.spinner("Analyzing Risks..."):
-                    prompt = f"Predict potential bugs for {target}. {custom_instructions}. Return ONLY a Markdown Table: Feature, Risk, Severity, Suggested Attack."
-                    res = call_llm(prompt, img)
-                    df_bugs = parse_markdown_table(res)
-                    if df_bugs is not None:
-                        # RESTORE CHART UI
-                        st.subheader("📊 Risk Distribution Analysis")
-                        if 'Severity' in df_bugs.columns:
-                            fig = px.pie(df_bugs, names='Severity', title='Risk Severity Breakdown', 
-                                         hole=0.4, color_discrete_sequence=px.colors.qualitative.Pastel)
-                            st.plotly_chart(fig, use_container_width=True)
-                        
-                        st.subheader("📋 Predicted Bug Registry")
-                        st.dataframe(df_bugs, use_container_width=True)
-                        
-                        c1, c2 = st.columns(2)
-                        c1.download_button("📥 CSV Report", df_bugs.to_csv(index=False), "bug_risks.csv")
-                        c2.download_button("📊 Excel Report", to_excel(df_bugs), "bug_risks.xlsx")
-                    else: st.write(res)
-                if os.path.exists(img): os.remove(img)
+        img_data, is_path = get_image_source(target)
+        if img_data:
+            with st.spinner("Finding Risks..."):
+                prompt = f"Predict potential bugs. {custom_instructions}. Return ONLY a Markdown Table: Feature, Risk, Severity, Suggested Attack."
+                res = call_llm(prompt, img_data)
+                df_bugs = parse_markdown_table(res)
+                if df_bugs is not None:
+                    if 'Severity' in df_bugs.columns:
+                        st.plotly_chart(px.pie(df_bugs, names='Severity', title='Severity Breakdown', hole=0.4), use_container_width=True)
+                    st.dataframe(df_bugs, use_container_width=True)
+                else: st.write(res)
+            if is_path and os.path.exists(img_data): os.remove(img_data)
+        else: st.error("Please provide an image or URL.")
 
 # --- TAB 3: SEO AUDITOR ---
 with tab3:
-    if st.button("🔍 Run Detailed SEO Audit", type="primary"):
+    if st.button("🔍 Run SEO Audit", type="primary"):
         target = get_processed_url()
-        if target:
-            with st.spinner("Detailed SEO Scrape..."):
-                driver = init_driver()
-                try:
-                    driver.get(target)
-                    seo_raw = fetch_seo_detailed(driver, target)
-                    prompt = f"Detailed SEO Audit for {target}. Data: {seo_raw}. {custom_instructions}. Return a Markdown Table: Category, Finding, Status, Suggestion, Priority."
-                    res = call_llm(prompt)
-                    df_seo = parse_markdown_table(res)
-                    if df_seo is not None:
-                        st.subheader("🚀 SEO KPIs")
-                        k1, k2, k3 = st.columns(3)
-                        k1.metric("Status", seo_raw["Status"])
-                        k2.metric("H1 Count", seo_raw["H1 Count"])
-                        k3.metric("Alt Issues", seo_raw["Alt Issues"])
-                        
-                        st.dataframe(df_seo, use_container_width=True)
-                        c1, c2 = st.columns(2)
-                        c1.download_button("📥 CSV", df_seo.to_csv(index=False), "seo_audit.csv")
-                        c2.download_button("📊 Excel", to_excel(df_seo), "seo_audit.xlsx")
-                    else: st.write(res)
-                finally: driver.quit()
-
-
-
-
-
-
-
-
+        img_data, is_path = get_image_source(target)
+        if img_data:
+            with st.spinner("Scraping SEO Data..."):
+                seo_raw = {"Status": "Manual Upload", "H1 Count": "N/A", "Alt Issues": "N/A"}
+                if target:
+                    driver = init_driver()
+                    try:
+                        driver.get(target)
+                        seo_raw = fetch_seo_detailed(driver, target)
+                    finally: driver.quit()
+                prompt = f"SEO Audit. Data: {seo_raw}. Return a Markdown Table: Category, Finding, Suggestion, Priority."
+                res = call_llm(prompt, img_data)
+                df_seo = parse_markdown_table(res)
+                if df_seo is not None:
+                    k1, k2, k3 = st.columns(3)
+                    k1.metric("Status", seo_raw["Status"])
+                    k2.metric("H1 Count", seo_raw["H1 Count"])
+                    k3.metric("Alt Issues", seo_raw["Alt Issues"])
+                    st.dataframe(df_seo, use_container_width=True)
+                else: st.write(res)
+            if is_path and os.path.exists(img_data): os.remove(img_data)
+        else: st.error("Please provide an image or URL.")
