@@ -216,7 +216,7 @@ with tab1:
         img_data, is_path = get_image_source(target)
         if img_data:
             with st.spinner("Analyzing UI..."):
-                prompt = f"Generate {num_cases} test cases. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: Test Case ID, Category, Scenario, Pre-Condition, Expected Result, Screen, Status, Priority, Severity, Created By."
+                prompt = f"Generate {num_cases} test cases. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: Test Case ID, Category, Scenario, Pre-Condition, Expected Result, Actual Result, Browser, Screen, Status, Priority, Severity, Created By."
                 res = call_llm(prompt, img_data)
                 df = parse_markdown_table(res)
                 if df is not None:
@@ -270,3 +270,4 @@ with tab3:
                 else: st.write(res)
             if is_path and os.path.exists(img_data): os.remove(img_data)
         else: st.error("Please provide an image or URL.")
+
