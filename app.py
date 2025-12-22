@@ -163,7 +163,7 @@ with st.sidebar:
         st.success("🔒 API Key Active")
     
     st.markdown("---")
-    categories = st.multiselect("Focus Areas:", ["UI/UX", "Security", "SEO", "Performance", "Positive Testing", "Negative Testing"], default=["UI/UX"])
+    categories = st.multiselect("Focus Areas:", ["UI/UX", "Functionality", "Security", "SEO", "Performance", "Positive Testing", "Negative Testing"], default=["UI/UX", "Functionality"])
     num_cases = st.slider("Test Case Count", 5, 50, 20)
     
     # RE-ADD CUSTOM PROMPT OPTION
@@ -193,7 +193,7 @@ with tab1:
             img = capture_screenshot(target)
             if img:
                 with st.spinner("Generating Tests..."):
-                    prompt = f"Generate {num_cases} test cases for {target}. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: ID, Category, Scenario, Expected Result, Priority."
+                    prompt = f"Generate {num_cases} test cases for {target}. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: Test Case ID, Category, Scenario, Expected Result, Status, Priority, Severity, Created By."
                     res = call_llm(prompt, img)
                     df = parse_markdown_table(res)
                     if df is not None:
@@ -258,6 +258,7 @@ with tab3:
                         c2.download_button("📊 Excel", to_excel(df_seo), "seo_audit.xlsx")
                     else: st.write(res)
                 finally: driver.quit()
+
 
 
 
