@@ -83,10 +83,36 @@ def is_valid_url(url):
         return all([result.scheme, result.netloc])
     except: return False
 
-def to_excel(df):
+def to_excel_with_summary(df, report_type="QA Report"):
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='QA_Report')
+        # Sheet 1: Detailed Data
+        df.to_excel(writer, index=False, sheet_name='Detailed_Report')
+        
+        # Sheet 2: Summary Logic
+        summary_data = {
+            "Metric": ["Total Items Generated", "Report Date", "Tool Version"],
+            "Value": [len(df), time.strftime("%Y-%m-%d %H:%M:%S"), "v2.0"]
+        }
+        
+        # Add dynamic counts if columns exist
+        for col in ['Severity', 'Priority', 'Status']:
+            if col in df.columns:
+                counts = df[col].value_counts()
+                for val, count in counts.items():
+                    summary_data["Metric"].append(f"{col}: {val}")
+                    summary_data["Value"].append(count)
+                    
+        summary_df = pd.DataFrame(summary_data)
+        summary_df.to_excel(writer, index=False, sheet_name='Summary')
+        
+        # Formatting
+        workbook = writer.book
+        worksheet = writer.sheets['Summary']
+        header_format = workbook.add_format({'bold': True, 'bg_color': '#FF416C', 'color': 'white'})
+        for col_num, value in enumerate(summary_df.columns.values):
+            worksheet.write(0, col_num, value, header_format)
+            
     return output.getvalue()
 
 def init_driver():
@@ -173,7 +199,7 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("📸 Image Input")
-    st.write("Click box for uploading image.")
+    st.write("Click box for uploading or pasting image.")
     
     uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg"], key="main_input_box")
     
@@ -215,13 +241,13 @@ with tab1:
         target = get_processed_url()
         img_data, is_path = get_image_source(target)
         if img_data:
-            with st.spinner("Analyzing UI..."):
-                prompt = f"Generate {num_cases} test cases. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: Test Case ID, Category, Scenario, Pre-Condition, Expected Result, Actual Result, Browser, Screen, Status, Priority, Severity, Created By."
+            with st.spinner("Analyzing UI for Test Cases..."):
+                prompt = f"Generate {num_cases} detailed test cases. Focus on {categories}. {custom_instructions}. Return ONLY a Markdown Table: Test Case ID, Category, Scenario, Pre-Condition, Expected Result, Actual Result, Browser, Screen, Status, Priority, Severity, Created By."
                 res = call_llm(prompt, img_data)
                 df = parse_markdown_table(res)
                 if df is not None:
                     st.dataframe(df, use_container_width=True)
-                    st.download_button("📥 Export Excel", to_excel(df), "QA_Tests.xlsx")
+                    st.download_button("📥 Export QA Report", to_excel_with_summary(df), "QA_Test_Report.xlsx")
                 else: st.write(res)
             if is_path and os.path.exists(img_data): os.remove(img_data)
         else: st.error("Please provide an image or URL.")
@@ -232,14 +258,15 @@ with tab2:
         target = get_processed_url()
         img_data, is_path = get_image_source(target)
         if img_data:
-            with st.spinner("Finding Risks..."):
-                prompt = f"Predict potential bugs. {custom_instructions}. Return ONLY a Markdown Table: Feature, Risk, Severity, Suggested Attack."
+            with st.spinner("Analyzing UI for Bugs..."):
+                prompt = f"Predict potential bugs. {custom_instructions}. Return ONLY a Markdown Table: Bug ID, Feature/Module, Risk Description, Potential Impact, Severity, Probability, Suggested Attack, Mitigation Strategy."
                 res = call_llm(prompt, img_data)
                 df_bugs = parse_markdown_table(res)
                 if df_bugs is not None:
                     if 'Severity' in df_bugs.columns:
                         st.plotly_chart(px.pie(df_bugs, names='Severity', title='Severity Breakdown', hole=0.4), use_container_width=True)
                     st.dataframe(df_bugs, use_container_width=True)
+                    st.download_button("📥 Export Bug Report", to_excel_with_summary(df_bugs), "Bug_Prediction_Report.xlsx")
                 else: st.write(res)
             if is_path and os.path.exists(img_data): os.remove(img_data)
         else: st.error("Please provide an image or URL.")
@@ -250,7 +277,7 @@ with tab3:
         target = get_processed_url()
         img_data, is_path = get_image_source(target)
         if img_data:
-            with st.spinner("Scraping SEO Data..."):
+            with st.spinner("Analyzing SEO..."):
                 seo_raw = {"Status": "Manual Upload", "H1 Count": "N/A", "Alt Issues": "N/A"}
                 if target:
                     driver = init_driver()
@@ -258,7 +285,7 @@ with tab3:
                         driver.get(target)
                         seo_raw = fetch_seo_detailed(driver, target)
                     finally: driver.quit()
-                prompt = f"SEO Audit. Data: {seo_raw}. Return a Markdown Table: Category, Finding, Suggestion, Priority."
+                prompt = f"Perform SEO audit. Data: {seo_raw}. Return ONLY a Markdown Table: Audit Item, Finding, Impact, Current Status, Recommendation, Priority, Technical Difficulty."
                 res = call_llm(prompt, img_data)
                 df_seo = parse_markdown_table(res)
                 if df_seo is not None:
@@ -267,7 +294,7 @@ with tab3:
                     k2.metric("H1 Count", seo_raw["H1 Count"])
                     k3.metric("Alt Issues", seo_raw["Alt Issues"])
                     st.dataframe(df_seo, use_container_width=True)
+                    st.download_button("📥 Export SEO Audit", to_excel_with_summary(df_seo), "SEO_Audit_Report.xlsx")
                 else: st.write(res)
             if is_path and os.path.exists(img_data): os.remove(img_data)
         else: st.error("Please provide an image or URL.")
-
