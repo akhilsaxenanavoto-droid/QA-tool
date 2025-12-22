@@ -138,9 +138,9 @@ def parse_markdown_table(text):
 with st.sidebar:
     # RE-ADD LOGO
     try:
-        st.image("navoto.svg", use_container_width=True)
+        st.image("Akhil.png", use_container_width=True)
     except:
-        st.warning("⚠️ 'navoto.svg' not found.")
+        st.warning("⚠️ 'Akhil.png' not found.")
     
     st.title("Settings")
     env_key = os.getenv("GROQ_API_KEY", "")
@@ -246,3 +246,4 @@ with tab3:
                         c2.download_button("📊 Excel", to_excel(df_seo), "seo_audit.xlsx")
                     else: st.write(res)
                 finally: driver.quit()
+
