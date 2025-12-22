@@ -164,7 +164,7 @@ with st.sidebar:
     
     st.markdown("---")
     categories = st.multiselect("Focus Areas:", ["UI/UX", "Functionality", "Security", "SEO", "Performance", "Positive Testing", "Negative Testing"], default=["UI/UX", "Functionality"])
-    num_cases = st.slider("Test Case Count", 5, 50, 20, 75)
+    num_cases = st.slider("Test Case Count", 5,10,15,20,25,45,50,60,75)
     
     # RE-ADD CUSTOM PROMPT OPTION
     st.markdown("---")
@@ -258,6 +258,7 @@ with tab3:
                         c2.download_button("📊 Excel", to_excel(df_seo), "seo_audit.xlsx")
                     else: st.write(res)
                 finally: driver.quit()
+
 
 
 
