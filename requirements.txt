@@ -1,5 +1,10 @@
 streamlit
-groq
-python-dotenv
+pandas
 plotly
 selenium
+webdriver-manager
+groq
+python-dotenv
+beautifulsoup4
+requests
+xlsxwriter
