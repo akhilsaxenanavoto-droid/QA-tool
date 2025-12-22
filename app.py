@@ -73,11 +73,16 @@ def to_excel(df):
 
 def init_driver():
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("--headless=new") # Required for Cloud
+    chrome_options.add_argument("--no-sandbox")   # Required for Linux
+    chrome_options.add_argument("--disable-dev-shm-usage") # Prevents memory crashes
     chrome_options.add_argument("--disable-gpu")
-    return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    
+    # This automatically finds the installed Chromium on the server
+    return webdriver.Chrome(
+        service=Service(ChromeDriverManager().install()), 
+        options=chrome_options
+    )
 
 def capture_screenshot(url):
     driver = None
@@ -246,4 +251,5 @@ with tab3:
                         c2.download_button("📊 Excel", to_excel(df_seo), "seo_audit.xlsx")
                     else: st.write(res)
                 finally: driver.quit()
+
 
