@@ -199,7 +199,7 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("📸 Image Input")
-    st.write("Click box for uploading or pasting image.")
+    st.write("Upload Full Image.")
     
     uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg"], key="main_input_box")
     
@@ -298,6 +298,7 @@ with tab3:
                 else: st.write(res)
             if is_path and os.path.exists(img_data): os.remove(img_data)
         else: st.error("Please provide an image or URL.")
+
 
 
 
