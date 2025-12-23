@@ -210,7 +210,7 @@ with st.sidebar:
 
     st.markdown("---")
     categories = st.multiselect("Focus Areas:", ["UI/UX", "Functionality", "Security", "SEO", "Positive Testing", "Negative Testing", "Accessibility", "Functional", "Non-Functional", "Validation", "Usability"], default=["Functional", "Non-Functional", "Validation", "Usability"])
-    num_cases = st.slider("Test Case Count", 5, 75, 20)
+    num_cases = st.slider("Test Case Count", 5, 75, 30)
     custom_instructions = st.text_area("Custom Prompt Instructions")
 
 # --- MAIN UI ---
@@ -298,5 +298,6 @@ with tab3:
                 else: st.write(res)
             if is_path and os.path.exists(img_data): os.remove(img_data)
         else: st.error("Please provide an image or URL.")
+
 
 
