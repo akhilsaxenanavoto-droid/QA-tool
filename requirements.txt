@@ -1,10 +1,11 @@
 streamlit
 pandas
-plotly
 selenium
 webdriver-manager
-groq
+google-generativeai
 python-dotenv
 beautifulsoup4
+pillow
 requests
 xlsxwriter
+plotly
