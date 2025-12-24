@@ -116,19 +116,23 @@ def init_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    chrome_options.page_load_strategy = 'eager'
+    
+    # Existing stability flags preserved
+    chrome_options.add_argument("--disable-renderer-backgrounding")
+    chrome_options.add_argument("--disable-background-timer-throttling")
+    chrome_options.page_load_strategy = 'eager' #
 
-    # Check if running on Streamlit Cloud (Linux)
+    # FIX: Check for Streamlit Cloud binary paths
     if os.path.exists("/usr/bin/chromium-browser"):
         chrome_options.binary_location = "/usr/bin/chromium-browser"
     elif os.path.exists("/usr/bin/chromium"):
         chrome_options.binary_location = "/usr/bin/chromium"
 
     try:
-        # Try local initialization first
+        # Fallback for local Windows development using your existing logic
         return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     except Exception:
-        # Fallback for Streamlit Cloud environment
+        # Use system-installed driver on Streamlit Cloud
         return webdriver.Chrome(options=chrome_options)
 
 def capture_full_page_screenshot(url):
@@ -279,4 +283,5 @@ with tab2:
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
+
 
