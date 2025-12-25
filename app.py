@@ -166,7 +166,7 @@ def call_gemini(prompt, image_input=None):
     if not api_key: return "Error: No API Key."
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-2.5-flash-lite')
+    model = genai.GenerativeModel('gemini-3-flash-preview')
     
     contents = []
     if image_input:
@@ -283,6 +283,7 @@ with tab2:
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
+
 
 
 
