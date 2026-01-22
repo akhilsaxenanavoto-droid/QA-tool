@@ -1,13 +1,10 @@
 import streamlit as st
 import os
 import time
-import base64
 import pandas as pd
 import io
-import requests
-import tempfile # Added for video handling
+import tempfile
 from urllib.parse import urlparse
-import plotly.express as px
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -16,6 +13,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from PIL import Image
@@ -31,7 +29,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- RESTORED CSS STYLING ---
+# --- CSS STYLING ---
 st.markdown("""
     <style>
     @media (min-width: 992px) {
@@ -94,7 +92,7 @@ def to_excel_with_summary(df, report_type="QA Report"):
         df.to_excel(writer, index=False, sheet_name='Detailed_Report')
         summary_data = {
             "Metric": ["Total Items Generated", "Report Date", "Model Used"],
-            "Value": [len(df), time.strftime("%Y-%m-%d %H:%M:%S"), "Gemini 3 Flash Preview"]
+            "Value": [len(df), time.strftime("%Y-%m-%d %H:%M:%S"), "Gemini 1.5 Flash"]
         }
         for col in ['Severity', 'Priority', 'Status']:
             if col in df.columns:
@@ -117,23 +115,20 @@ def init_driver():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--disable-gpu")
-    
-    # Existing stability flags preserved
     chrome_options.add_argument("--disable-renderer-backgrounding")
     chrome_options.add_argument("--disable-background-timer-throttling")
-    chrome_options.page_load_strategy = 'eager' #
+    chrome_options.page_load_strategy = 'eager'
 
-    # FIX: Check for Streamlit Cloud binary paths
-    if os.path.exists("/usr/bin/chromium-browser"):
-        chrome_options.binary_location = "/usr/bin/chromium-browser"
-    elif os.path.exists("/usr/bin/chromium"):
+    # CLOUD FIX: Explicitly look for Chromium in Linux paths
+    if os.path.exists("/usr/bin/chromium"):
         chrome_options.binary_location = "/usr/bin/chromium"
+    elif os.path.exists("/usr/bin/chromium-browser"):
+        chrome_options.binary_location = "/usr/bin/chromium-browser"
 
     try:
-        # Fallback for local Windows development using your existing logic
         return webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
     except Exception:
-        # Use system-installed driver on Streamlit Cloud
+        # Fallback for Streamlit Cloud if Manager fails
         return webdriver.Chrome(options=chrome_options)
 
 def capture_full_page_screenshot(url):
@@ -144,13 +139,11 @@ def capture_full_page_screenshot(url):
         driver.get(url)
         WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         
-        # Trigger hydration for full content
         driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
         time.sleep(3)
         driver.execute_script("window.scrollTo(0, 0);")
         time.sleep(2)
 
-        # Full page height logic
         width = driver.execute_script("return document.body.parentNode.scrollWidth")
         height = driver.execute_script("return document.body.parentNode.scrollHeight")
         driver.set_window_size(width, height) 
@@ -162,37 +155,54 @@ def capture_full_page_screenshot(url):
     finally:
         if driver: driver.quit()
 
-# --- MODIFIED FOR VIDEO: Helper to handle video upload to Gemini ---
+# --- CLOUD FIX: Video Upload Helper ---
 def upload_video_to_gemini(video_bytes, mime_type):
+    # Create temp file in a way that works on Cloud
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
         tmp.write(video_bytes)
         tmp_path = tmp.name
     
     try:
         video_file = genai.upload_file(tmp_path, mime_type=mime_type)
+        
+        # Wait for Google to process the video (CRITICAL on Cloud)
         while video_file.state.name == "PROCESSING":
             time.sleep(2)
             video_file = genai.get_file(video_file.name)
+            
+        if video_file.state.name == "FAILED":
+            raise ValueError("Video processing failed by Google.")
+            
         return video_file
     finally:
+        # Cleanup temp file
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 
-# --- MODIFIED FOR VIDEO: Updated arguments to accept mime_type ---
 def call_gemini(prompt, image_input=None, mime_type=None):
     api_key = st.session_state.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
     if not api_key: return "Error: No API Key."
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-3-flash-preview') # Video requires 1.5 Flash or Pro usually
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # CLOUD FIX: Disable Safety Filters to prevent "Empty Response" errors
+    safety_settings = {
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+    }
     
     contents = []
     if image_input:
-        # Check if it is video based on mime_type
         if mime_type and "video" in mime_type:
-            video_file = upload_video_to_gemini(image_input, mime_type)
-            contents.append(video_file)
-        # Original Image Logic
+            try:
+                # Use the robust upload function
+                video_file = upload_video_to_gemini(image_input, mime_type)
+                contents.append(video_file)
+            except Exception as e:
+                return f"Video Error: {str(e)}"
         elif isinstance(image_input, str):
             with Image.open(image_input) as img:
                 img_copy = img.copy()
@@ -204,7 +214,8 @@ def call_gemini(prompt, image_input=None, mime_type=None):
     
     contents.append(prompt)
     try:
-        response = model.generate_content(contents)
+        # Apply safety settings here
+        response = model.generate_content(contents, safety_settings=safety_settings)
         return response.text
     except Exception as e:
         return f"Gemini Error: {str(e)}"
@@ -232,10 +243,8 @@ with st.sidebar:
     
     st.markdown("---")
     st.subheader("📸 Media Input")
-    # MODIFIED FOR VIDEO: Added mp4, mov, avi
     uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg", "mp4", "mov", "avi"], key="main_input_box")
     
-    # MODIFIED FOR VIDEO: Preview Logic
     if uploaded_file:
         st.markdown('<div class="preview-card">', unsafe_allow_html=True)
         if "video" in uploaded_file.type:
@@ -257,7 +266,7 @@ tab1, tab2, tab3 = st.tabs(["📝 Test Case Generator", "🐞 Bug Predictor", "�
 
 def get_image_source(target_url):
     if uploaded_file is not None:
-        return uploaded_file.getvalue(), False, uploaded_file.type # Added mime type return
+        return uploaded_file.getvalue(), False, uploaded_file.type 
     elif target_url:
         path = capture_full_page_screenshot(target_url)
         return path, True, "image/png" 
@@ -267,17 +276,17 @@ def get_image_source(target_url):
 with tab1:
     if st.button("🚀 Run Analysis", type="primary", key="btn_test"):
         url = get_processed_url(url_input)
-        img_data, is_path, mime = get_image_source(url) # Capture mime
+        img_data, is_path, mime = get_image_source(url)
         if img_data:
-            # Layout kept side-by-side but main dashboard image hidden
             col_info, col_data = st.columns([1, 3])
             with col_info:
                 st.info("Analysis in progress...")
+                if mime and "video" in mime:
+                    st.caption("⏳ Processing video... this takes a moment.")
             with col_data:
                 st.subheader("Generated Test Cases")
                 with st.spinner("AI is analyzing..."):
                     prompt = f"Senior QA: Analyze UI. Generate {num_cases} cases for {categories}. {custom_instructions}. Return ONLY Markdown Table: Test Case ID, Category, Input, Test steps, Scenario, Pre-Condition, Expected Result, Actual Result, Browser, Screen, Status, Priority, Severity, Created By."
-                    # MODIFIED: Pass mime type
                     res = call_gemini(prompt, img_data, mime)
                     df = parse_markdown_table(res)
                     if df is not None:
@@ -293,7 +302,7 @@ with tab1:
 with tab2:
     if st.button("🕵️‍♂️ Predict Risks", type="primary", key="btn_bug"):
         url = get_processed_url(url_input)
-        img_data, is_path, mime = get_image_source(url) # Capture mime
+        img_data, is_path, mime = get_image_source(url)
         if img_data:
             col_info, col_data = st.columns([1, 3])
             with col_info:
@@ -302,7 +311,6 @@ with tab2:
                 st.subheader("Bug Predictions")
                 with st.spinner("Finding risks..."):
                     prompt = f"Predict bugs. {custom_instructions}. Return ONLY Markdown Table: Bug ID, Feature, Risk Description, Severity, Probability, Mitigation Strategy."
-                    # MODIFIED: Pass mime type
                     res = call_gemini(prompt, img_data, mime)
                     df_bugs = parse_markdown_table(res)
                     if df_bugs is not None:
