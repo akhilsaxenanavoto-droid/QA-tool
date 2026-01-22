@@ -184,7 +184,7 @@ def call_gemini(prompt, image_input=None, mime_type=None):
     if not api_key: return "Error: No API Key."
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    model = genai.GenerativeModel('gemini-3-flash-preview')
     
     # CLOUD FIX: Disable Safety Filters to prevent "Empty Response" errors
     safety_settings = {
@@ -320,3 +320,4 @@ with tab2:
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
+
