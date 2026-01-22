@@ -272,31 +272,45 @@ def get_image_source(target_url):
         return path, True, "image/png" 
     return None, False, None
 
-# --- TAB 1: TEST CASES ---
+# # --- TAB 1: TEST CASES ---
 with tab1:
     if st.button("🚀 Run Analysis", type="primary", key="btn_test"):
         url = get_processed_url(url_input)
         img_data, is_path, mime = get_image_source(url)
+        
         if img_data:
-            col_info, col_data = st.columns([1, 3])
-            with col_info:
-                st.info("Analysis in progress...")
+            # 1. Create a placeholder at the TOP (Occupies full width)
+            status_container = st.empty()
+            
+            # 2. Show the loading message inside the placeholder
+            with status_container.container():
+                st.info("Analysis in progress... AI is scanning the visual elements.")
                 if mime and "video" in mime:
-                    st.caption("⏳ Processing video... this takes a moment.")
-            with col_data:
+                    st.caption("⏳ Processing video frames... please wait.")
+            
+            # 3. Perform the analysis (The spinner will overlay comfortably)
+            with st.spinner("Generating test scenarios..."):
+                prompt = f"Senior QA: Analyze UI. Generate {num_cases} cases for {categories}. {custom_instructions}. Return ONLY Markdown Table: Test Case ID, Category, Input, Test steps, Scenario, Pre-Condition, Expected Result, Actual Result, Browser, Screen, Status, Priority, Severity, Created By."
+                res = call_gemini(prompt, img_data, mime)
+                df = parse_markdown_table(res)
+            
+            # 4. Clear the status message immediately
+            status_container.empty()
+            
+            # 5. Display Results (Now fully Left-Aligned because there are no columns)
+            if df is not None:
                 st.subheader("Generated Test Cases")
-                with st.spinner("AI is analyzing..."):
-                    prompt = f"Senior QA: Analyze UI. Generate {num_cases} cases for {categories}. {custom_instructions}. Return ONLY Markdown Table: Test Case ID, Category, Input, Test steps, Scenario, Pre-Condition, Expected Result, Actual Result, Browser, Screen, Status, Priority, Severity, Created By."
-                    res = call_gemini(prompt, img_data, mime)
-                    df = parse_markdown_table(res)
-                    if df is not None:
-                        st.dataframe(df, use_container_width=True)
-                        st.download_button("📥 Export QA Report", to_excel_with_summary(df), "QA_Audit_Report.xlsx")
-                    else: st.markdown(res)
+                st.dataframe(df, use_container_width=True)
+                st.download_button("📥 Export QA Report", to_excel_with_summary(df), "QA_Audit_Report.xlsx")
+            else:
+                st.markdown(res)
+            
+            # Cleanup
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
-        else: st.error("Capture failed. Verify URL or internet.")
+        else:
+            st.error("Capture failed. Verify URL or internet.")
 
 # --- TAB 2: BUG PREDICTOR ---
 with tab2:
@@ -320,4 +334,5 @@ with tab2:
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
+
 
