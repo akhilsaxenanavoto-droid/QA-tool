@@ -9,3 +9,4 @@ pillow
 requests
 xlsxwriter
 plotly
+
