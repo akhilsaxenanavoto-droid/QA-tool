@@ -5,6 +5,7 @@ import base64
 import pandas as pd
 import io
 import requests
+import tempfile # Added for video handling
 from urllib.parse import urlparse
 import plotly.express as px
 from selenium import webdriver
@@ -161,16 +162,38 @@ def capture_full_page_screenshot(url):
     finally:
         if driver: driver.quit()
 
-def call_gemini(prompt, image_input=None):
+# --- MODIFIED FOR VIDEO: Helper to handle video upload to Gemini ---
+def upload_video_to_gemini(video_bytes, mime_type):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+    
+    try:
+        video_file = genai.upload_file(tmp_path, mime_type=mime_type)
+        while video_file.state.name == "PROCESSING":
+            time.sleep(2)
+            video_file = genai.get_file(video_file.name)
+        return video_file
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+# --- MODIFIED FOR VIDEO: Updated arguments to accept mime_type ---
+def call_gemini(prompt, image_input=None, mime_type=None):
     api_key = st.session_state.get("gemini_api_key") or os.getenv("GEMINI_API_KEY")
     if not api_key: return "Error: No API Key."
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-3-flash-preview')
+    model = genai.GenerativeModel('gemini-3-flash-preview') # Video requires 1.5 Flash or Pro usually
     
     contents = []
     if image_input:
-        if isinstance(image_input, str):
+        # Check if it is video based on mime_type
+        if mime_type and "video" in mime_type:
+            video_file = upload_video_to_gemini(image_input, mime_type)
+            contents.append(video_file)
+        # Original Image Logic
+        elif isinstance(image_input, str):
             with Image.open(image_input) as img:
                 img_copy = img.copy()
             contents.append(img_copy)
@@ -184,7 +207,7 @@ def call_gemini(prompt, image_input=None):
         response = model.generate_content(contents)
         return response.text
     except Exception as e:
-        return f"Gemini 3 Error: {str(e)}"
+        return f"Gemini Error: {str(e)}"
 
 def parse_markdown_table(text):
     try:
@@ -205,16 +228,20 @@ with st.sidebar:
     st.text_input("Google Gemini API Key", value=env_key, type="password", key="gemini_api_key")
     
     if st.session_state.get("gemini_api_key") or env_key:
-        st.success("💎 Gemini 3 Active")
+        st.success("💎 Gemini Active")
     
     st.markdown("---")
-    st.subheader("📸 Image Input")
-    uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg"], key="main_input_box")
+    st.subheader("📸 Media Input")
+    # MODIFIED FOR VIDEO: Added mp4, mov, avi
+    uploaded_file = st.file_uploader("", type=["png", "jpg", "jpeg", "mp4", "mov", "avi"], key="main_input_box")
     
-    # RESTORED: Visible Sidebar Preview
+    # MODIFIED FOR VIDEO: Preview Logic
     if uploaded_file:
         st.markdown('<div class="preview-card">', unsafe_allow_html=True)
-        st.image(uploaded_file, caption="Manual Upload Preview", use_container_width=True)
+        if "video" in uploaded_file.type:
+            st.video(uploaded_file)
+        else:
+            st.image(uploaded_file, caption="Manual Upload Preview", use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
@@ -230,27 +257,28 @@ tab1, tab2, tab3 = st.tabs(["📝 Test Case Generator", "🐞 Bug Predictor", "�
 
 def get_image_source(target_url):
     if uploaded_file is not None:
-        return uploaded_file.getvalue(), False 
+        return uploaded_file.getvalue(), False, uploaded_file.type # Added mime type return
     elif target_url:
         path = capture_full_page_screenshot(target_url)
-        return path, True 
-    return None, False
+        return path, True, "image/png" 
+    return None, False, None
 
 # --- TAB 1: TEST CASES ---
 with tab1:
     if st.button("🚀 Run Analysis", type="primary", key="btn_test"):
         url = get_processed_url(url_input)
-        img_data, is_path = get_image_source(url)
+        img_data, is_path, mime = get_image_source(url) # Capture mime
         if img_data:
             # Layout kept side-by-side but main dashboard image hidden
             col_info, col_data = st.columns([1, 3])
             with col_info:
-                st.info("Analysis in progress... Image processed in background.")
+                st.info("Analysis in progress...")
             with col_data:
                 st.subheader("Generated Test Cases")
                 with st.spinner("AI is analyzing..."):
                     prompt = f"Senior QA: Analyze UI. Generate {num_cases} cases for {categories}. {custom_instructions}. Return ONLY Markdown Table: Test Case ID, Category, Input, Test steps, Scenario, Pre-Condition, Expected Result, Actual Result, Browser, Screen, Status, Priority, Severity, Created By."
-                    res = call_gemini(prompt, img_data)
+                    # MODIFIED: Pass mime type
+                    res = call_gemini(prompt, img_data, mime)
                     df = parse_markdown_table(res)
                     if df is not None:
                         st.dataframe(df, use_container_width=True)
@@ -265,7 +293,7 @@ with tab1:
 with tab2:
     if st.button("🕵️‍♂️ Predict Risks", type="primary", key="btn_bug"):
         url = get_processed_url(url_input)
-        img_data, is_path = get_image_source(url)
+        img_data, is_path, mime = get_image_source(url) # Capture mime
         if img_data:
             col_info, col_data = st.columns([1, 3])
             with col_info:
@@ -274,7 +302,8 @@ with tab2:
                 st.subheader("Bug Predictions")
                 with st.spinner("Finding risks..."):
                     prompt = f"Predict bugs. {custom_instructions}. Return ONLY Markdown Table: Bug ID, Feature, Risk Description, Severity, Probability, Mitigation Strategy."
-                    res = call_gemini(prompt, img_data)
+                    # MODIFIED: Pass mime type
+                    res = call_gemini(prompt, img_data, mime)
                     df_bugs = parse_markdown_table(res)
                     if df_bugs is not None:
                         st.dataframe(df_bugs, use_container_width=True)
@@ -283,8 +312,3 @@ with tab2:
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
-
-
-
-
-
