@@ -278,7 +278,7 @@ with st.sidebar:
 
     st.markdown("---")
     categories = st.multiselect("Focus Areas:", ["UI/UX", "Functionality", "Validation", "Usability", "Security", "Positive Testing", "Negative Testing","Performance","SEO"], default=["UI/UX","Functionality","Positive Testing","Negative Testing"])
-    num_cases = st.slider("Test Case Count", 5, 75, 50)
+    num_cases = st.slider("Test Case Count", 5, 90, 50)
     custom_instructions = st.text_area("Custom Prompt Instructions")
 
 # --- MAIN UI ---
@@ -416,5 +416,6 @@ with tab3:
                 os.remove(img_data)
         else:
             st.error("Input Error: Please provide a URL or upload an image.")
+
 
 
