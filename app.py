@@ -192,7 +192,7 @@ def call_gemini(prompt, image_input=None, mime_type=None):
     models_to_try = [
         'gemini-3-flash-preview', 
         'gemini-2.5-flash',
-        'gemini-1.5-flash' 
+        'gemini-2.5-flash-lite' 
     ]
     
     # CLOUD FIX: Disable Safety Filters to prevent "Empty Response" errors
@@ -357,6 +357,7 @@ with tab2:
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
+
 
 
 
