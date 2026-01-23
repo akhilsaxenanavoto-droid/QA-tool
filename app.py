@@ -184,7 +184,16 @@ def call_gemini(prompt, image_input=None, mime_type=None):
     if not api_key: return "Error: No API Key."
     
     genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-3-flash-preview')
+    
+    # Define the priority list of models
+    # 1. Try Gemini 3 Flash Preview first (High performance)
+    # 2. Fallback to Gemini 2.5 Flash (Stable/Backup)
+    # 3. Final fallback to Gemini 1.5 Flash (Maximum reliability)
+    models_to_try = [
+        'gemini-3-flash-preview', 
+        'gemini-2.5-flash',
+        'gemini-1.5-flash' 
+    ]
     
     # CLOUD FIX: Disable Safety Filters to prevent "Empty Response" errors
     safety_settings = {
@@ -194,6 +203,7 @@ def call_gemini(prompt, image_input=None, mime_type=None):
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
     }
     
+    # Prepare contents (Images/Video/Text)
     contents = []
     if image_input:
         if mime_type and "video" in mime_type:
@@ -213,12 +223,25 @@ def call_gemini(prompt, image_input=None, mime_type=None):
             contents.append(img_copy)
     
     contents.append(prompt)
-    try:
-        # Apply safety settings here
-        response = model.generate_content(contents, safety_settings=safety_settings)
-        return response.text
-    except Exception as e:
-        return f"Gemini Error: {str(e)}"
+    
+    # Loop through models until one works
+    last_error = ""
+    for model_name in models_to_try:
+        try:
+            # print(f"Attempting with model: {model_name}...") # Optional: Debug print
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(contents, safety_settings=safety_settings)
+            
+            # If successful, return immediately
+            return response.text
+            
+        except Exception as e:
+            # If this model fails, capture error and continue to the next model
+            last_error = str(e)
+            continue
+            
+    # If all models fail, return the error from the last attempt
+    return f"Gemini Error (All models failed): {last_error}"
 
 def parse_markdown_table(text):
     try:
@@ -334,5 +357,6 @@ with tab2:
             if is_path and os.path.exists(img_data):
                 time.sleep(1)
                 os.remove(img_data)
+
 
 
