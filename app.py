@@ -359,5 +359,62 @@ with tab2:
                 os.remove(img_data)
 
 
+# --- TAB 3: SEO AUDITOR ---
+with tab3:
+    if st.button("📈 Run SEO Audit", type="primary", key="btn_seo"):
+        url = get_processed_url(url_input)
+        img_data, is_path, mime = get_image_source(url)
+
+        if img_data:
+            # Create layout
+            col_status, col_result = st.columns([1, 3])
+            
+            with col_status:
+                st.info("🔍 Analyzing On-Page SEO...")
+                st.caption("Checking Visual Hierarchy, Content Density, and UX Signals.")
+
+            with col_result:
+                st.subheader("SEO Audit Findings")
+                
+                with st.spinner("Evaluating SEO Factors..."):
+                    # SEO Specific Prompt
+                    prompt = (
+                        f"Act as a Technical SEO Expert. Analyze this UI screenshot. "
+                        f"Focus on: 1. Heading Hierarchy (H1/H2), 2. Content Readability & Density, "
+                        f"3. CTA Placement, 4. Mobile Friendliness (Visual Layout), 5. Accessibility Risks (Contrast/Text Size). "
+                        f"{custom_instructions}. "
+                        f"Return ONLY a Markdown Table with these columns: "
+                        f"Category, Observation, SEO Impact (High/Med/Low), Recommendation, Estimated Effort."
+                    )
+                    
+                    # Call Gemini (uses the updated fallback function)
+                    res = call_gemini(prompt, img_data, mime)
+                    df_seo = parse_markdown_table(res)
+
+                    if df_seo is not None:
+                        # Display Data
+                        st.dataframe(df_seo, use_container_width=True)
+                        
+                        # Visual Chart for Impact High/Med/Low
+                        if 'SEO Impact' in df_seo.columns:
+                            st.caption("Impact Distribution")
+                            st.bar_chart(df_seo['SEO Impact'].value_counts())
+
+                        # Export Button
+                        st.download_button(
+                            "📥 Export SEO Report", 
+                            to_excel_with_summary(df_seo, "SEO Audit"), 
+                            "SEO_Audit_Report.xlsx"
+                        )
+                    else:
+                        # Fallback if table parsing fails
+                        st.markdown(res)
+
+            # Cleanup temporary screenshot
+            if is_path and os.path.exists(img_data):
+                time.sleep(1)
+                os.remove(img_data)
+        else:
+            st.error("Input Error: Please provide a URL or upload an image.")
 
 
